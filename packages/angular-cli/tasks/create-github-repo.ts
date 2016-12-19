@@ -14,10 +14,9 @@ export default Task.extend({
     // declared here so that tests can stub exec
     const execPromise = denodeify(exec);
 
-    if (/.+/.test(commandOptions.ghToken) && /\w+/.test(commandOptions.ghUsername)) {
+    if (/.+/.test(commandOptions.ghToken)) {
       promise = Promise.resolve({
-        ghToken: commandOptions.ghToken,
-        ghUsername: commandOptions.ghUsername
+        ghToken: commandOptions.ghToken
       });
     } else {
       ui.writeLine();
@@ -40,13 +39,6 @@ export default Task.extend({
           `,
           validate: function(token: string) {
             return /.+/.test(token);
-          }
-        }, {
-          name: 'ghUsername',
-          type: 'input',
-          message: 'and your GitHub user name:',
-          validate: function(userName: string) {
-            return /\w+/.test(userName);
           }
         }]);
     }
@@ -71,15 +63,29 @@ export default Task.extend({
           }
         });
 
-        req.on('response', function(response: any) {
-          if (response.statusCode === 201) {
-            resolve(execPromise(oneLine`
-              git remote add origin 
-              git@github.com:${answers.ghUsername}/${commandOptions.projectName}.git
-            `));
+        req.on('response', (res) => {
+          if (res.statusCode === 201) {
+            let resData = '';
+            res.on('data', (bufferData) => {
+              resData += bufferData.toString('utf8');
+            });
+            res.on('end', () => {
+              let jsonData = JSON.parse(resData);
+              if (typeof jsonData == 'object' && jsonData['owner']) {
+                let ghUsername = jsonData['owner']['login'];
+                resolve(execPromise(oneLine`
+                  git remote add origin 
+                  git@github.com:${ghUsername}/${commandOptions.projectName}.git
+                `));
+              } else {
+                reject(new SilentError(oneLine`
+                  Failed to obtain username. Data: ${jsonData}
+                `));
+              }
+            });
           } else {
             reject(new SilentError(oneLine`
-              Failed to create GitHub repo. Error: ${response.statusCode} ${response.statusMessage}
+              Failed to create GitHub repo. Error: ${res.statusCode} ${res.statusMessage}
             `));
           }
         });

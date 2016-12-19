@@ -117,7 +117,7 @@ describe('Acceptance: ng github-pages:deploy', function() {
     return ng(['github-pages:deploy', '--skip-build']);
   });
 
-  it('should create repo if needed', function() {
+  it('should create repo if needed', function(done) {
     let noRemote = '',
       token = 'token',
       username = 'username';
@@ -163,8 +163,27 @@ describe('Acceptance: ng github-pages:deploy', function() {
       return {
         on: (event, cb) => responseCb = cb,
         write: (postData) => expect(postData).to.eql(expectedPostData),
-        end: () => responseCb({ statusCode: 201 })
+        end: () => httpsResponseStubFunc(responseCb)
       }
+    }
+
+    function httpsResponseStubFunc(res) {
+      let expectedRes = JSON.stringify({
+        owner: {
+          login: username
+        }
+      });
+
+      return res({
+        statusCode: 201,
+        on: (event, cb) => {
+          if (event == 'end') {
+            done();
+          } else {
+            cb(expectedRes);
+          }
+        }
+      });
     }
 
     return ng(['github-pages:deploy', '--skip-build', `--gh-token=${token}`,
